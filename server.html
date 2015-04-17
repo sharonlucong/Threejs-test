@@ -1,0 +1,443 @@
+<!doctype html>
+
+<head>
+    <title>Server</title>
+    <style>
+    body {
+        margin: 0;
+    }
+    
+    canvas {
+        width: 100%;
+        height: 100%;
+    }
+    </style>
+</head>
+
+<body>
+<!-- <center><h1>Welcome to WebGL!</h1></center> -->
+    <!-- <div id="container" style="width:95%; height:80%; position:absolute;">
+    </div> -->
+    <script src="js/Three.js"></script>
+    <script src="js/OrbitControls.js"></script>
+    <script src="libs/dat.gui.min.js"></script>
+    <script src="libs/THREEx.KeyboardState.js"></script>
+    <script src="libs/postprocessing/EffectComposer.js"></script>
+    <script src="libs/postprocessing/RenderPass.js"></script>
+    <script src="libs/postprocessing/ShaderPass.js"></script>
+    <script src="libs/postprocessing/MaskPass.js"></script>
+    <script src="libs/shaders/CopyShader.js"></script>
+    <script src="libs/shaders/AdditiveBlendShader.js"></script>
+    <script src="libs/shaders/HorizontalBlurShader.js"></script>
+    <script src="libs/shaders/VerticalBlurShader.js"></script>
+    <script src="libs/postprocessing/BloomPass.js"></script>
+    <script>
+    var scene, camera, renderer;
+    var glowscene, glowcomposer;
+    var finalComposer;
+    var keyboard = new THREEx.KeyboardState();
+
+    var rackCameraActive = false;
+    //picking objects
+    var projector = new THREE.Projector();
+    var raycaster = new THREE.Raycaster();
+    var mouseVector = new THREE.Vector3();
+    var INTERSECTED = null;
+    var info = null;
+    var id = 0;
+
+    var cubes = new THREE.Object3D();
+
+    function init() {
+        //grab the container
+        var container = document.getElementById("container");
+        //create a scene
+        scene = new THREE.Scene();
+
+        //create a glow scene
+        glowscene = new THREE.Scene();
+
+        // lights
+        glowscene.add(new THREE.PointLight(0xffffff));
+        glowscene.add(new THREE.AmbientLight(0xffffff));
+
+        //create a renderer
+        renderer = new THREE.WebGLRenderer({
+            antialias: true
+        });
+        //set the background color of the scene
+        // renderer.setClearColorHex(0x333F47, 1);//(color, opacity)
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        //create a camera
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(0, 100, 0);
+        scene.add(camera);
+        camera.position.z = 170;
+        camera.lookAt(scene.position);
+
+        cameraControl = new THREE.OrbitControls(camera);
+
+
+        //create a camera for one rack
+        rackCam = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 100, 10000);
+        scene.add(rackCam);
+
+        //Grid
+        var size = 500,
+            step = 50;
+
+        var geometry = new THREE.Geometry();
+
+        for (var i = -size; i <= size; i += step * 5) {
+
+            geometry.vertices.push(new THREE.Vector3(-size, 0, i));
+            geometry.vertices.push(new THREE.Vector3(size, 0, i));
+
+            geometry.vertices.push(new THREE.Vector3(i, 0, -size));
+            geometry.vertices.push(new THREE.Vector3(i, 0, size));
+
+        }
+
+        var material = new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            opacity: 0.2
+        });
+
+        var line = new THREE.Line(geometry, material, THREE.LinePieces);
+        scene.add(line);
+
+        var geometry = new THREE.CubeGeometry(50, 50, 50);
+
+        scene.add(cubes);
+
+
+
+        var material1 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+        var material2 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+        var material3 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/up.jpg')
+        });
+        var material4 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/up.jpg')
+        });
+        var material5 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+        var material6 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+
+
+        var materials = [material1, material2, material3, material4, material5, material6];
+
+        var box = new THREE.CubeGeometry(50, 50, 50);
+        // var cubeTexture = new THREE.ImageUtils.loadTexture('image/up.jpg');
+        var meshFaceMaterial = new THREE.MeshFaceMaterial(materials);
+        // var meshFaceMaterial = new THREE.MeshBasicMaterial({
+        //     map: cubeTexture,
+        //     transparent:false
+        //         // color: 0xf0f0f0
+        // });
+        var cube = new THREE.Mesh(box, meshFaceMaterial);
+
+        cube.scale.y = 1;
+        cube.scale.x = 2;
+        cube.scale.z = 2;
+
+        // cube.position.x = i * 100 - 500;
+        cube.position.y = (cube.scale.y * 2) / 2 + 20;
+        // cube.position.z = j*50+150+j*150;
+
+        cubes.add(cube);
+
+        var camera2 = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera2.position = camera.position;
+        camera2.rotation = camera.rotation;
+        camera2.lookAt(glowscene.position);
+        glowscene.add(camera2);
+
+
+        for (var i = 0; i < 2; i++) {
+            //child1,child2
+            var childMaterial = new THREE.MeshBasicMaterial({
+                color: 0x0000ff
+            });
+            var childCube = new THREE.Mesh(geometry, childMaterial);
+            childCube.name = "port" + i;
+            childCube.position.x = -25 + i * 50;
+            childCube.scale.y = 0.2;
+            childCube.scale.x = 0.1;
+            childCube.scale.z = 0.1;
+            cube.add(childCube);
+
+            scene.updateMatrixWorld();
+            var vector = new THREE.Vector3();
+            vector.applyMatrix4(childCube.matrixWorld);
+
+            // var geometry2 = new THREE.CubeGeometry(110, 55, 110);
+            var gmat = new THREE.MeshBasicMaterial({
+                // ambient: 0xffffff,
+                color: 0xffff00,
+                transparent: false,
+                opacity: 0.80
+            });
+
+            var gmesh = new THREE.Mesh(geometry, gmat);
+            gmesh.position = vector;
+            gmesh.scale.y = 0.1;
+            gmesh.scale.x = 0.1;
+            gmesh.scale.z = 0.1;
+            // gmesh.scale = cube.scale;
+            // gmesh.overdraw = true;
+            // gmesh.position.set(-50,35,0);
+            glowscene.add(gmesh);
+
+
+            //child3, child4
+            var childMaterial = new THREE.MeshBasicMaterial({
+                color: 0x0000ff
+            });
+            var childCube = new THREE.Mesh(geometry, childMaterial);
+            childCube.name = "port" + (i + 2);
+            childCube.position.z = -25 + i * 50;
+            childCube.scale.y = 0.2;
+            childCube.scale.x = 0.1;
+            childCube.scale.z = 0.1;
+            cube.add(childCube);
+            
+            scene.updateMatrixWorld();
+            var vector = new THREE.Vector3();
+            vector.applyMatrix4(childCube.matrixWorld);
+
+            var gmat = new THREE.MeshBasicMaterial({
+                // ambient: 0xffffff,
+                color: 0xffff00,
+                transparent: false,
+                opacity: 0.80
+            });
+
+            var gmesh = new THREE.Mesh(geometry, gmat);
+            gmesh.position = vector;
+            gmesh.scale.y = 0.1;
+            gmesh.scale.x = 0.1;
+            gmesh.scale.z = 0.1;
+            // gmesh.scale = cube.scale;
+            // gmesh.overdraw = true;
+            // gmesh.position.set(-50,35,0);
+            glowscene.add(gmesh);
+
+
+        }
+
+        var renderTargetParameters = {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            format: THREE.RGBFormat,
+            stencilBufer: false
+        };
+
+        var renderTargetGlow = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, renderTargetParameters);
+
+        // Create the glow composer, used to chain multiple shader passes by calling addpass
+        glowcomposer = new THREE.EffectComposer(renderer, renderTargetGlow);
+
+        // Prepare the glow scene render pass
+        var renderModelGlow = new THREE.RenderPass(glowscene, camera2);
+
+        // Prepare the blur shader passes
+        var hblur = new THREE.ShaderPass(THREE.HorizontalBlurShader);
+        var vblur = new THREE.ShaderPass(THREE.VerticalBlurShader);
+
+        var bluriness = 2;
+
+        //uniforms are the input parameters to the shader and define the appearance of the pass
+        hblur.uniforms["h"].value = bluriness / window.innerWidth;
+        vblur.uniforms["v"].value = bluriness / window.innerHeight;
+
+
+        // Add all the glow passes, each pass creates a different effect
+        // order is important, the first pass is normally RenderPass(),which render the 3D scene
+        glowcomposer.addPass(renderModelGlow);
+        glowcomposer.addPass(hblur);
+        glowcomposer.addPass(vblur);
+
+        finalComposer = new THREE.EffectComposer(renderer, renderTargetGlow);
+        // prepare the final render's passes
+        var renderModel = new THREE.RenderPass(scene, camera);
+        finalComposer.addPass(renderModel);
+
+        var effectBlend = new THREE.ShaderPass(THREE.AdditiveBlendShader, "tDiffuse1");
+        effectBlend.uniforms['tDiffuse2'].value = glowcomposer.renderTarget2;
+
+        //the last pass in the composer chain needs to be set to renderToScreen
+        //Then, in the render loop, instead of calling renderer.render(), call composer.render()
+        effectBlend.renderToScreen = true;
+        finalComposer.addPass(effectBlend);
+
+        cameraControl2 = new THREE.OrbitControls(camera2);
+        // for (var i = 0; i < 4; i++) {
+        //     // var meshFaceMaterial = new THREE.MeshFaceMaterial(materials);
+        //     for(var j=0; j<4; j++){
+        //       var meshFaceMaterial = new THREE.MeshBasicMaterial({
+        //         color: 0xf0f0f0
+        //     });
+
+        //     var cube = new THREE.Mesh(geometry, meshFaceMaterial);
+
+        //     cube.scale.y = 3;
+
+        //     cube.position.x = i * 100 - 500;
+        //     cube.position.y = (cube.scale.y * 2) / 2 + 100;
+        //     cube.position.z = j*50+150+j*150;
+
+        //     cubes.add(cube);
+        //     }
+
+
+        // }
+        //set an event listener in case of resizing the window
+        window.addEventListener('resize', function() {
+            var WIDTH = window.innerWidth,
+                HEIGHT = window.innerHeight;
+
+            renderer.setSize(WIDTH, HEIGHT);
+            camera.aspect(WIDTH / HEIGHT);
+            camera.updateProjectionMatrix();
+        });
+
+        window.addEventListener('mousemove', overviewInfo, false);
+
+        // window.addEventListener('mousedown', changeCam, false);
+
+        // //add lighting
+        var ambientLight = new THREE.AmbientLight(0xffffff);
+        scene.add(ambientLight);
+
+        //GUI
+        infoText = new function() {
+            this.name = '';
+            this.info1 = '';
+            this.info2 = '';
+        };
+
+        addControlGui(infoText);
+        console.log(cube);
+
+
+      //   var grid = [[1,4,5],[2,5,7],[3,5,7],[2],[1,5],[1,5,6,7,8,9,1]];
+      // var barGraph = new THREE.Object3D();
+      // barGraph.position.x = -100;
+      // scene.add(barGraph);
+
+      // var max = 10;
+      // var mat = new THREE.MeshLambertMaterial({color: 0xFFAA55});
+      // for (var j=0; j<grid.length; j++) {
+      //   for (var i=0; i<grid[j].length; i++) {
+      //     var barHeight = grid[j][i]/max * 80;
+      //     var geo = new THREE.CubeGeometry(8, barHeight, 8);
+      //     var mesh = new THREE.Mesh(geo, mat);
+      //     mesh.position.x = (i-grid[j].length/2) * 16;
+      //     //suppose they all stand on a plane, the center is on the surface of the plan, thus need to lift them up
+      //     mesh.position.y = barHeight/2; 
+      //     console.log(mesh.position.y);
+      //     mesh.position.z = -(j-grid.length/2) * 16;
+      //     mesh.castShadow = mesh.receiveShadow = true;
+      //     barGraph.add(mesh);
+      //   }
+      // }
+    }
+
+
+    function render() {
+        cameraControl.update();
+        cameraControl2.update();
+        requestAnimationFrame(render);
+
+        //render the scene
+        // if (rackCameraActive) {
+        //     renderer.render(scene, rackCam);
+        // } else {
+        //     renderer.render(scene, camera);
+        // }
+        glowcomposer.render();
+        finalComposer.render();
+    }
+
+    function addControlGui(controlObj) {
+        var gui = new dat.GUI();
+        gui.add(controlObj, 'name').listen();
+        gui.add(controlObj, 'info1');
+        gui.add(controlObj, 'info2');
+    }
+
+    function overviewInfo(e) {
+        mouseVector.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1, -1)
+        projector.unprojectVector(mouseVector, camera);
+        raycaster.set(camera.position, mouseVector.sub(camera.position).normalize());
+
+
+        var intersects = raycaster.intersectObjects(cubes.children[0].children);
+
+        if (intersects.length > 0) {
+            // console.log(intersects[0].object);
+            if (INTERSECTED != intersects[0].object) {
+                if (INTERSECTED) {
+                    INTERSECTED.material.color.setHex(INTERSECTED.currentHex);
+
+                }
+
+                INTERSECTED = intersects[0].object;
+                INTERSECTED.currentHex = INTERSECTED.material.color.getHex();
+                INTERSECTED.material.color.setHex(0xff0000);
+                infoText.name = intersects[0].object.name;
+                // console.log(infoText.name);
+            }
+        } else {
+            if (INTERSECTED) INTERSECTED.material.color.setHex(INTERSECTED.currentHex);
+            INTERSECTED = null;
+            infoText.name = 'no selection';
+        }
+    }
+
+    function changeCam(e) {
+        if (INTERSECTED) {
+            // console.log(INTERSECTED);
+            var relativeCameraOffset = new THREE.Vector3(0, 50, 200);
+            var cameraOffset = relativeCameraOffset.applyMatrix4(INTERSECTED.matrixWorld);
+            rackCam.position.x = cameraOffset.x;
+            rackCam.position.y = cameraOffset.y;
+            rackCam.position.z = cameraOffset.z;
+            rackCam.lookAt(INTERSECTED.position);
+            rackCameraActive = true;
+            window.removeEventListener("mousemove", overviewInfo);
+        }
+
+        mouseVector.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1, -1)
+        mouseVector.unproject(camera);
+        raycaster.set(camera.position, mouseVector.sub(camera.position).normalize());
+
+        var intersects = raycaster.intersectObjects(cubes.children);
+        if (intersects < 1) {
+            window.addEventListener('mousemove', overviewInfo, false);
+            rackCameraActive = false;
+        }
+    }
+
+    init();
+    render();
+    </script>
+</body>
+
+</html>

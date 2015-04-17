@@ -1,0 +1,254 @@
+<!doctype html>
+
+<head>
+    <title>3JS Test</title>
+    <style>
+    body {
+        margin: 0;
+    }
+    
+    canvas {
+        width: 100%;
+        height: 100%;
+    }
+    </style>
+</head>
+
+<body>
+    <script src="js/three.min.js"></script>
+    <script src="js/OrbitControls.js"></script>
+    <script src="libs/dat.gui.min.js"></script>
+    <script src="libs/THREEx.KeyboardState.js"></script>
+    <script>
+    var scene, camera, renderer;
+    var keyboard = new THREEx.KeyboardState();
+
+    var rackCameraActive = false;
+    //picking objects
+    // projector = new THREE.Projector();
+    var raycaster = new THREE.Raycaster();
+    var mouseVector = new THREE.Vector3();
+    var INTERSECTED = null;
+    var info = null;
+    var id = 0;
+
+    var cubes = new THREE.Object3D();
+
+    function init() {
+        //create a scene
+        scene = new THREE.Scene();
+
+        //create a renderer
+        renderer = new THREE.WebGLRenderer({
+            antialias: true
+        });
+        //set the background color of the scene
+        // renderer.setClearColorHex(0x333F47, 1);//(color, opacity)
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        //create a camera
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(0, 400, 0);
+        scene.add(camera);
+        camera.position.z = 700;
+        camera.lookAt(scene.position);
+
+        cameraControl = new THREE.OrbitControls(camera);
+
+        //create a camera for one rack
+        rackCam = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 100, 10000);
+        scene.add(rackCam);
+
+        //Grid
+        var size = 500,
+            step = 50;
+
+        var geometry = new THREE.Geometry();
+
+        for (var i = -size; i <= size; i += step * 5) {
+
+            geometry.vertices.push(new THREE.Vector3(-size, 0, i));
+            geometry.vertices.push(new THREE.Vector3(size, 0, i));
+
+            geometry.vertices.push(new THREE.Vector3(i, 0, -size));
+            geometry.vertices.push(new THREE.Vector3(i, 0, size));
+
+        }
+
+        var material = new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            opacity: 0.2
+        });
+
+        var line = new THREE.Line(geometry, material, THREE.LinePieces);
+        scene.add(line);
+
+        var geometry = new THREE.BoxGeometry(50, 50, 50);
+
+        scene.add(cubes);
+
+        var material1 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+        var material2 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+        var material3 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+        var material4 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+        var material5 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+        var material6 = new THREE.MeshBasicMaterial({
+            color: 0xf0f0f0,
+            map: THREE.ImageUtils.loadTexture('image/rack.png')
+        });
+
+
+        var materials = [material1, material2, material3, material4, material5, material6];
+
+
+        for (var i = 0; i < 4; i++) {
+            // var meshFaceMaterial = new THREE.MeshFaceMaterial(materials);
+            for (var j = 0; j < 4; j++) {
+                var meshFaceMaterial = new THREE.MeshFaceMaterial(materials);
+                //   var meshFaceMaterial = new THREE.MeshBasicMaterial({
+                //     color: 0xf0f0f0
+                // });
+
+                var cube = new THREE.Mesh(geometry, meshFaceMaterial);
+
+                cube.scale.y = 3;
+
+                cube.position.x = i * 250 - 350;
+                cube.position.y = (cube.scale.y * 2) / 2 + 100;
+                cube.position.z = j * 250 - 350;
+
+                cubes.add(cube);
+            }
+
+
+        }
+        //set an event listener in case of resizing the window
+        window.addEventListener('resize', function() {
+            var WIDTH = window.innerWidth,
+                HEIGHT = window.innerHeight;
+
+            renderer.setSize(WIDTH, HEIGHT);
+            camera.aspect(WIDTH / HEIGHT);
+            camera.updateProjectionMatrix();
+        });
+
+        window.addEventListener('mousemove', overviewInfo, false);
+
+        window.addEventListener('mousedown', changeCam, false);
+
+        // //add lighting
+        var ambientLight = new THREE.AmbientLight(0xffffff);
+        scene.add(ambientLight);
+
+        //GUI
+        infoText = new function() {
+            this.name = '';
+        };
+
+        addControlGui(infoText);
+    }
+
+
+    function render() {
+        cameraControl.update();
+        requestAnimationFrame(render);
+
+        //render the scene
+        if (rackCameraActive) {
+            renderer.render(scene, rackCam);
+        } else {
+            renderer.render(scene, camera);
+        }
+    }
+
+    function addControlGui(controlObj) {
+        var gui = new dat.GUI();
+        gui.add(controlObj, 'name').listen();
+    }
+
+    function overviewInfo(e) {
+        mouseVector.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1, -1)
+        mouseVector.unproject(camera);
+        raycaster.set(camera.position, mouseVector.sub(camera.position).normalize());
+
+        var intersects = raycaster.intersectObjects(cubes.children);
+
+        if (intersects.length > 0) {
+            if (INTERSECTED != intersects[0].object) {
+                if (INTERSECTED) {
+                    // INTERSECTED.material.color.setHex(INTERSECTED.currentHex);
+                    for (var i = 0; i < INTERSECTED.material.materials.length; i++) {
+                        INTERSECTED.material.materials[i].color.setHex(INTERSECTED.currentHex);
+                    }
+
+                }
+
+                INTERSECTED = intersects[0].object;
+                INTERSECTED.currentHex = INTERSECTED.material.materials[0].color.getHex();
+                for (var i = 0; i < INTERSECTED.material.materials.length; i++) {
+                    INTERSECTED.material.materials[i].color.setHex(0xff0000);
+                }
+                // INTERSECTED.material.color.setHex(0xff0000);
+                infoText.name = intersects[0].object.uuid;
+                // console.log(infoText.name);
+            }
+        } else {
+            if (INTERSECTED) {
+                for (var i = 0; i < INTERSECTED.material.materials.length; i++) {
+                    INTERSECTED.material.materials[i].color.setHex(INTERSECTED.currentHex);
+                }
+            }
+            INTERSECTED = null;
+            infoText.name = 'no selection';
+        }
+    }
+
+    function changeCam(e) {
+        if (INTERSECTED) {
+            // console.log(INTERSECTED);
+            var relativeCameraOffset = new THREE.Vector3(0, 50, 200);
+            var cameraOffset = relativeCameraOffset.applyMatrix4(INTERSECTED.matrixWorld);
+            rackCam.position.x = cameraOffset.x;
+            rackCam.position.y = cameraOffset.y;
+            rackCam.position.z = cameraOffset.z;
+            rackCam.lookAt(INTERSECTED.position);
+            rackCameraActive = true;
+            window.removeEventListener("mousemove", overviewInfo);
+            setTimeout(function() {
+                window.location = 'server.html';
+            }, 1250);
+        }
+
+        mouseVector.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1, -1)
+        mouseVector.unproject(camera);
+        raycaster.set(camera.position, mouseVector.sub(camera.position).normalize());
+
+        var intersects = raycaster.intersectObjects(cubes.children);
+        if (intersects < 1) {
+            window.addEventListener('mousemove', overviewInfo, false);
+            rackCameraActive = false;
+        }
+    }
+
+    init();
+    render();
+    </script>
+</body>
+
+</html>
